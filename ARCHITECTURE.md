@@ -1,363 +1,258 @@
-# Architecture Document
-**Project Name:** Custom Offline Taximeter App (Argo App)  
-**Framework:** Flutter (Dart) · **Target:** Android  
-**State Management:** Provider · **Database:** SQLite (`sqflite`)  
-**Map Engine:** `flutter_map` + `.mbtiles` · **GPS:** `geolocator` + `latlong2`  
-**Screen Wake:** `wakelock_plus` · **Orientation:** Portrait-only (`SystemChrome`)
+# Pagroo — System Architecture
 
----
+## 1. High-Level Architecture
 
-## 1. Directory Structure (Feature-First)
+```mermaid
+graph TB
+    subgraph "Presentation Layer"
+        MSS["ModeSelectionScreen<br/>(Home)"]
+        DTS["DistanceTrackingScreen"]
+        TTS["TimeTrackingScreen"]
+        SS["SettingsScreen"]
+        HLS["HistoryListScreen"]
+        TDS["TripDetailScreen"]
+    end
+
+    subgraph "State Management (Provider)"
+        DP["DistanceProvider"]
+        TP["TimerProvider"]
+        SP["SettingsProvider"]
+        HP["HistoryProvider"]
+        DLP["DownloadProvider"]
+    end
+
+    subgraph "Core Services"
+        LS["LocationService"]
+        DBS["DatabaseService"]
+        MS["MapService"]
+        FSM["ForegroundServiceManager"]
+    end
+
+    subgraph "Data Layer"
+        SQLite["SQLite DB<br/>(argo_app_v2.db)"]
+        MBT["MBTiles Files<br/>(maps/*.mbtiles)"]
+        IA["Internet Archive<br/>(Map Downloads)"]
+    end
+
+    MSS --> DTS
+    MSS --> TTS
+    MSS --> SS
+    MSS --> HLS
+    HLS --> TDS
+
+    DTS --> DP
+    DTS --> SP
+    DTS --> MS
+    TTS --> TP
+    TTS --> SP
+    SS --> SP
+    SS --> DLP
+    HLS --> HP
+    TDS --> HP
+    TDS --> MS
+
+    DP --> LS
+    DP --> DBS
+    DP --> FSM
+    TP --> DBS
+    TP --> FSM
+    SP --> DBS
+    HP --> DBS
+    DLP --> MS
+
+    DBS --> SQLite
+    MS --> MBT
+    DLP --> IA
+```
+
+## 2. Project Structure
 
 ```
 lib/
-├── main.dart                         # App entry, Provider setup, route config
-│
-├── core/                             # Shared, feature-agnostic code
-│   ├── constants/
-│   │   └── app_constants.dart        # Default pricing, GPS thresholds, intervals
-│   ├── utils/
-│   │   └── haversine.dart            # Haversine distance calc using latlong2
-│   └── services/
-│       ├── database_service.dart     # SQLite singleton (init, CRUD, migrations)
-│       ├── location_service.dart     # Geolocator wrapper (stream, permissions)
-│       └── map_service.dart          # MBTiles loading, file path resolution
-│
+├── main.dart                          # App entry, MultiProvider setup, portrait lock
+├── core/
+│   ├── constants/                     # (empty — reserved)
+│   ├── services/
+│   │   ├── database_service.dart      # Singleton SQLite CRUD (trips, signal_loss_logs, settings)
+│   │   ├── foreground_service_manager.dart  # Android FGS init, start/stop/update notification
+│   │   ├── location_service.dart      # Geolocator permission check + position stream
+│   │   └── map_service.dart           # CityMap model, MBTiles validation/open/delete
+│   ├── theme/
+│   │   └── app_theme.dart             # Material 3 dark/light ThemeData (Slate palette)
+│   └── utils/
+│       ├── currency_formatter.dart    # Indonesian Rupiah formatting (intl, id_ID locale)
+│       └── haversine.dart             # Haversine distance via latlong2
 ├── features/
-│   ├── onboarding/                   # Mandatory map download gate
-│   │   ├── screens/
-│   │   │   └── onboarding_screen.dart
-│   │   └── providers/
-│   │       └── download_provider.dart
-│   │
-│   ├── tracking/                     # Active trip (distance + time meters)
-│   │   ├── screens/
-│   │   │   └── tracking_screen.dart  # Map view, live KM/time, fare display
+│   ├── tracking/
 │   │   ├── providers/
-│   │   │   ├── distance_provider.dart
-│   │   │   └── timer_provider.dart
-│   │   └── widgets/
-│   │       ├── fare_display.dart
-│   │       ├── signal_indicator.dart
-│   │       └── map_view.dart
-│   │
-│   ├── settings/                     # Custom pricing config
+│   │   │   ├── distance_provider.dart # GPS stream, distance calc, signal loss, trip save
+│   │   │   └── timer_provider.dart    # Timer with pause/resume, fare calc, trip save
 │   │   ├── screens/
-│   │   │   └── settings_screen.dart
-│   │   └── providers/
-│   │       └── settings_provider.dart
-│   │
-│   └── history/                      # Trip history + transparency logs
-│       ├── screens/
-│       │   ├── history_list_screen.dart
-│       │   └── history_detail_screen.dart
-│       ├── providers/
-│       │   └── history_provider.dart
-│       └── models/
-│           ├── trip_record.dart
-│           └── signal_loss_log.dart
-│
-└── models/                           # Shared data models (if cross-feature)
-    └── coordinates.dart
+│   │   │   ├── mode_selection_screen.dart   # Home: mode cards, active trip banner, clock
+│   │   │   ├── distance_tracking_screen.dart # Map + HUD + Start/End Trip
+│   │   │   └── time_tracking_screen.dart     # Clock + Fare + Start/End/Pause/Resume
+│   │   └── widgets/                   # (empty — reserved)
+│   ├── settings/
+│   │   ├── providers/
+│   │   │   └── settings_provider.dart # Rates, theme, active map (persisted)
+│   │   └── screens/
+│   │       └── settings_screen.dart   # Rate config, theme toggle, map management cards
+│   ├── history/
+│   │   ├── models/
+│   │   │   ├── trip_record.dart       # TripRecord model (toMap/fromMap)
+│   │   │   └── signal_loss_log.dart   # SignalLossLog model (toMap/fromMap)
+│   │   ├── providers/
+│   │   │   └── history_provider.dart  # Trip list, totals, delete, signal loss log fetch
+│   │   └── screens/
+│   │       ├── history_list_screen.dart # Trip list with stats header
+│   │       └── trip_detail_screen.dart  # Detail view, static map, signal loss logs
+│   └── onboarding/
+│       └── providers/
+│           └── download_provider.dart # HTTP download with progress, validation, delete
+├── models/                            # (empty — reserved)
+├── assets/
+│   └── style.json                     # OpenMapTiles vector tile theme
+└── test/
+    ├── currency_formatter_test.dart   # Formatting unit tests
+    ├── trip_reset_test.dart           # Trip state reset unit tests
+    └── widget_test.dart               # Default Flutter widget test
 ```
 
-> **Map file storage:** The downloaded `east_java.mbtiles` is saved to the
-> **Application Documents Directory** resolved at runtime via `path_provider`
-> (e.g. `/data/data/com.example.argo/app_flutter/maps/east_java.mbtiles`).
-> Flutter's `assets/` folder is read-only and bundled at compile time—it
-> cannot be used for files downloaded after installation.
+## 3. Navigation Flow
 
-> **Rationale:** Feature-first keeps each screen, its state, and its widgets co-located. A beginner can work inside one folder without touching unrelated code. `core/` holds truly shared utilities.
-
----
-
-## 2. State Management Strategy (Provider)
-
-### 2.1 Design Principle: Strict UI ↔ Logic Separation
-
-Every computation (GPS polling, Haversine math, timer ticks) lives inside a `ChangeNotifier` subclass. The UI never performs calculations—it only reads exposed getters and calls action methods.
-
-### 2.2 Provider Tree
-
-```dart
-// main.dart
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Lock to portrait — driver must not accidentally rotate mid-trip
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => SettingsProvider()),    // pricing
-        ChangeNotifierProvider(create: (_) => DownloadProvider()),    // onboarding
-        ChangeNotifierProvider(create: (_) => DistanceProvider()),    // GPS + km
-        ChangeNotifierProvider(create: (_) => TimerProvider()),       // stopwatch
-        ChangeNotifierProvider(create: (_) => HistoryProvider()),     // trip logs
-      ],
-      child: const ArgoApp(),
-    ),
-  );
-}
+```mermaid
+graph LR
+    A["ModeSelectionScreen<br/>(Home)"] -->|"Distance Card"| B["DistanceTrackingScreen"]
+    A -->|"Time Card"| C["TimeTrackingScreen"]
+    A -->|"Settings ⚙️"| D["SettingsScreen"]
+    A -->|"History 📋"| E["HistoryListScreen"]
+    E -->|"Tap Trip Card"| F["TripDetailScreen"]
+    A -->|"Active Trip Banner"| B
+    A -->|"Active Trip Banner"| C
 ```
 
-### 2.3 Provider Responsibilities
+There is no onboarding flow. The app launches directly into `ModeSelectionScreen`.
 
-| Provider | Owns | Notifies UI of |
+## 4. State Management
+
+Provider (via `ChangeNotifier` + `MultiProvider`) is the sole state management solution.
+
+| Provider | Scope | Key State |
 |---|---|---|
-| `SettingsProvider` | Price-per-km, price-per-minute (persisted in SQLite) | Config changes |
-| `DownloadProvider` | Download progress %, completion flag | Progress bar updates |
-| `DistanceProvider` | GPS stream subscription, coordinate list, total km, signal status, `List<SignalLossLog>` | Distance & fare updates, signal alerts |
-| `TimerProvider` | `DateTime _startTime`, `Timer.periodic` (1 s UI refresh), elapsed via `DateTime.now().difference(_startTime)` | Elapsed time & time-based fare |
-| `HistoryProvider` | Read/write to `trips` and `signal_loss_logs` tables | Trip list refresh |
+| `SettingsProvider` | Global | `pricePerKm`, `pricePerMinute`, `isDarkMode`, `activeMapFileName` |
+| `DistanceProvider` | Global | `totalKm`, `coordinates`, `signalStatus`, `isTracking`, `logs` |
+| `TimerProvider` | Global | `elapsed`, `isPaused`, `isTracking`, `totalFare` |
+| `HistoryProvider` | Global | `trips`, `totalEarnings`, `isLoading` |
+| `DownloadProvider` | Global | Per-city: `downloaded`, `downloading`, `progress`, `error` |
 
-### 2.4 Why This Prevents Freezing
+All providers are registered in `main.dart` and live for the app's lifetime.
 
-- `DistanceProvider` subscribes to `Geolocator.getPositionStream()` in an async listener. Haversine math is pure Dart arithmetic (sub-microsecond)—no isolate needed, but the GPS stream itself is async and non-blocking.
-- `TimerProvider` uses `Timer.periodic` **only to trigger UI refreshes** (1 s interval). The actual elapsed time is always computed as `DateTime.now().difference(_startTime)`, which is immune to Android Doze mode pausing the timer. Even if ticks are delayed or skipped, the displayed duration and fare remain accurate.
-- **Wakelock (both screens):** `WakelockPlus.enable()` is called in `initState()` of **both** the Distance Tracking screen and the Time Tracking screen. `WakelockPlus.disable()` fires in `dispose()` when the trip ends or the user navigates away. This keeps the screen awake so the driver can glance at the fare without touching the phone.
-- Heavy I/O (`sqflite` writes) is `async`/`await`—never synchronous on the main thread.
+## 5. Database Schema
 
----
+```mermaid
+erDiagram
+    trips {
+        INTEGER id PK
+        TEXT date "ISO 8601"
+        TEXT tracking_type "CHECK('distance','time')"
+        REAL total_metric "km or minutes"
+        REAL total_earnings
+        REAL price_per_unit
+        INTEGER had_signal_loss "0 or 1"
+        TEXT route_json "JSON array of lat/lng"
+    }
 
-## 3. Database Schema (SQLite)
+    signal_loss_logs {
+        INTEGER id PK
+        INTEGER trip_id FK
+        TEXT loss_start "ISO 8601"
+        TEXT loss_end "ISO 8601"
+        REAL last_lat
+        REAL last_lng
+        REAL recovery_lat
+        REAL recovery_lng
+        REAL straight_line_km
+        INTEGER duration_seconds
+    }
 
-### 3.1 Table: `trips`
+    settings {
+        TEXT key PK
+        TEXT value
+    }
 
-Stores one row per completed trip.
-
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `id` | `INTEGER` | `PRIMARY KEY AUTOINCREMENT` | Unique trip ID |
-| `date` | `TEXT` | `NOT NULL` | ISO-8601 timestamp (`DateTime.toIso8601String()`) |
-| `tracking_type` | `TEXT` | `NOT NULL`, CHECK `IN ('distance', 'time')` | Which meter was primary |
-| `total_metric` | `REAL` | `NOT NULL` | Total KM (distance) or total minutes (time) |
-| `total_earnings` | `REAL` | `NOT NULL` | Calculated fare in IDR |
-| `price_per_unit` | `REAL` | `NOT NULL` | Rate snapshot at trip time (per-km or per-min) |
-| `had_signal_loss` | `INTEGER` | `NOT NULL DEFAULT 0` | Boolean flag (0/1) for quick filtering |
-
-### 3.2 Table: `signal_loss_logs`
-
-GPS transparency sub-log. Only populated for distance-tracked trips that experienced signal loss.
-
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `id` | `INTEGER` | `PRIMARY KEY AUTOINCREMENT` | Log entry ID |
-| `trip_id` | `INTEGER` | `NOT NULL REFERENCES trips(id) ON DELETE CASCADE` | Parent trip |
-| `loss_start` | `TEXT` | `NOT NULL` | ISO-8601 timestamp when signal was lost |
-| `loss_end` | `TEXT` | `NOT NULL` | ISO-8601 timestamp when signal recovered |
-| `last_lat` | `REAL` | `NOT NULL` | Last known latitude before loss |
-| `last_lng` | `REAL` | `NOT NULL` | Last known longitude before loss |
-| `recovery_lat` | `REAL` | `NOT NULL` | First latitude after recovery |
-| `recovery_lng` | `REAL` | `NOT NULL` | First longitude after recovery |
-| `straight_line_km` | `REAL` | `NOT NULL` | Haversine distance applied during blackout |
-| `duration_seconds` | `INTEGER` | `NOT NULL` | Blackout duration |
-
-### 3.3 Table: `settings`
-
-Simple key-value store for user preferences (avoids SharedPreferences dependency).
-
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `key` | `TEXT` | `PRIMARY KEY` | e.g. `price_per_km`, `price_per_minute` |
-| `value` | `TEXT` | `NOT NULL` | Stored as string, parsed by `SettingsProvider` |
-
-### 3.4 DDL (executed in `DatabaseService.init()`)
-
-```sql
-CREATE TABLE IF NOT EXISTS trips (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  date            TEXT    NOT NULL,
-  tracking_type   TEXT    NOT NULL CHECK(tracking_type IN ('distance','time')),
-  total_metric    REAL    NOT NULL,
-  total_earnings  REAL    NOT NULL,
-  price_per_unit  REAL    NOT NULL,
-  had_signal_loss INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS signal_loss_logs (
-  id               INTEGER PRIMARY KEY AUTOINCREMENT,
-  trip_id          INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
-  loss_start       TEXT    NOT NULL,
-  loss_end         TEXT    NOT NULL,
-  last_lat         REAL    NOT NULL,
-  last_lng         REAL    NOT NULL,
-  recovery_lat     REAL    NOT NULL,
-  recovery_lng     REAL    NOT NULL,
-  straight_line_km REAL    NOT NULL,
-  duration_seconds INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS settings (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
+    trips ||--o{ signal_loss_logs : "has"
 ```
 
----
+**Settings Keys**: `price_per_km`, `price_per_minute`, `is_dark_mode`, `active_map_file_name`.
 
-## 4. Core Services
+## 6. GPS Signal Loss State Machine
 
-### 4.1 `LocationService` — GPS Tracking
-
-```
-File: lib/core/services/location_service.dart
-Depends on: geolocator
-```
-
-| Method | Returns | Purpose |
-|---|---|---|
-| `checkAndRequestPermission()` | `Future<bool>` | Handles `LocationPermission` flow including background permission |
-| `startTracking({int intervalMs})` | `Stream<Position>` | Returns `Geolocator.getPositionStream()` with `LocationSettings(distanceFilter: 5)` to ignore micro-jitter |
-| `stopTracking()` | `void` | Cancels the stream subscription |
-| `isSignalAccurate(Position p)` | `bool` | Returns `p.accuracy <= ACCURACY_THRESHOLD` (e.g., 20 m) |
-
-**Signal Loss Detection Algorithm (consumed by `DistanceProvider`):**
-
-```
-1. On each Position event, check isSignalAccurate().
-2. If inaccurate or no event for > 5 seconds:
-   a. Record last known good coordinate + timestamp → signalLossStart.
-   b. Set state to SIGNAL_LOST, trigger visual/audio alert.
-3. On next accurate Position:
-   a. Record recovery coordinate + timestamp → signalLossEnd.
-   b. Compute Haversine(lastGood, recovery) → straight_line_km.
-   c. Add straight_line_km to running total.
-   d. Push SignalLossLog entry to in-memory list.
-   e. Set state back to TRACKING.
+```mermaid
+stateDiagram-v2
+    [*] --> Searching: App starts
+    Searching --> Locked: Accurate fix received
+    Locked --> Degraded: Inaccurate fix
+    Locked --> Lost: 5s watchdog timeout
+    Searching --> Lost: 5s watchdog timeout
+    Degraded --> Locked: Accurate fix (recovery)
+    Degraded --> Lost: 5s watchdog timeout
+    Lost --> Locked: Accurate fix (recovery + log)
 ```
 
-### 4.2 `haversine()` — Distance Calculation
+On recovery from `Lost`/`Degraded`, straight-line Haversine distance is added and a `SignalLossLog` is created.
 
-```
-File: lib/core/utils/haversine.dart
-Depends on: latlong2
-```
+## 7. Map System Architecture
 
-```dart
-import 'package:latlong2/latlong.dart';
+```mermaid
+sequenceDiagram
+    participant User
+    participant SettingsScreen
+    participant DownloadProvider
+    participant MapService
+    participant InternetArchive
+    participant Disk
 
-const Distance _haversine = Distance();
-
-/// Returns distance in kilometers between two coordinates.
-double haversineKm(double lat1, double lng1, double lat2, double lng2) {
-  return _haversine.as(
-    LengthUnit.Kilometer,
-    LatLng(lat1, lng1),
-    LatLng(lat2, lng2),
-  );
-}
-```
-
-> `latlong2`'s `Distance` class uses the Haversine formula internally. No manual math needed.
-
-### 4.3 `DatabaseService` — SQLite Singleton
-
-```
-File: lib/core/services/database_service.dart
-Depends on: sqflite, path_provider, path
+    User->>SettingsScreen: Tap "Download"
+    SettingsScreen->>DownloadProvider: downloadMap(city)
+    DownloadProvider->>InternetArchive: HTTP GET (streaming)
+    InternetArchive-->>DownloadProvider: chunks (progress updates)
+    DownloadProvider->>Disk: Write to .tmp file
+    DownloadProvider->>Disk: Validate SQLite magic bytes
+    DownloadProvider->>Disk: Rename .tmp → .mbtiles
+    DownloadProvider-->>SettingsScreen: downloaded = true
+    User->>SettingsScreen: Tap "Set Active"
+    SettingsScreen->>SettingsProvider: setActiveMap(fileName)
+    Note over SettingsProvider: Persisted to SQLite settings table
 ```
 
-| Method | Purpose |
-|---|---|
-| `Future<Database> get database` | Lazy-init singleton, runs DDL on `onCreate` |
-| `insertTrip(TripRecord)` | `INSERT` into `trips`, returns generated `id` |
-| `insertSignalLossLog(SignalLossLog)` | `INSERT` into `signal_loss_logs` |
-| `getTrips()` | `SELECT * FROM trips ORDER BY date DESC` |
-| `getTripWithLogs(int tripId)` | `JOIN` query returning trip + associated signal loss entries |
-| `getSetting(String key)` / `setSetting(String key, String value)` | Key-value CRUD for settings table |
+**Active Map Resolution** (`MapService.getActiveCity`):
+1. If `selectedFileName` matches a downloaded city → return it.
+2. Else, fall back to the first downloaded city.
+3. If nothing downloaded → return `null` (blank canvas).
 
-### 4.4 `MapService` — Offline Map Tiles
+## 8. Foreground Service
 
-```
-File: lib/core/services/map_service.dart
-Depends on: flutter_map, flutter_map_mbtiles, path_provider
-```
+The `flutter_foreground_task` package provides an Android Foreground Service that:
+- Prevents the OS from killing the app during active GPS/timer tracking.
+- Displays a persistent notification with live fare text.
+- Uses a `TaskHandler` isolate (`MyTaskHandler`) — the main isolate pushes updates via `updateService()`.
 
-| Method | Purpose |
-|---|---|
-| `Future<String> get mbtilesFolderPath` | Returns `{appDocDir}/maps/` |
-| `Future<bool> isMapDownloaded()` | Checks if `east_java.mbtiles` exists at expected path |
-| `Future<MbTiles> openTileStore()` | Opens the `.mbtiles` file, returns tile provider for `flutter_map` |
+**Service types declared in AndroidManifest**: `location|specialUse`.
 
-**Widget integration:**
+## 9. Timer Pause/Resume Architecture
 
-```dart
-FlutterMap(
-  options: MapOptions(initialCenter: surabayaCenter, initialZoom: 13),
-  children: [
-    TileLayer(
-      tileProvider: MbTilesTileProvider(mbTiles: await mapService.openTileStore()),
-    ),
-    // Polyline layer for route trace
-  ],
-)
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Running: startTracking()
+    Running --> Paused: pauseTracking()
+    Paused --> Running: resumeTracking()
+    Running --> Idle: endTrip()
+    Paused --> Idle: endTrip()
 ```
 
----
+`elapsed` is computed as:
+- **Running**: `_accumulatedDuration + (now - _resumeTime)`
+- **Paused**: `_accumulatedDuration` (frozen)
 
-## 5. Data Flow
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        DEVICE HARDWARE                                  │
-│  GPS Sensor ──► Geolocator Stream    System Clock ──► DateTime.now()    │
-│                                      Timer.periodic (UI refresh only)   │
-│                                      WakelockPlus (screen stays awake)  │
-└────────┬───────────────────────────────────────────────────┬────────────┘
-         │ Position events (async)                           │ 1 s tick
-         ▼                                                   ▼
-┌─────────────────────┐                       ┌────────────────────────────┐
-│  DistanceProvider    │                       │   TimerProvider            │
-│  ─────────────────── │                       │  ──────────────────────── │
-│  • Accumulates km    │                       │  • _startTime recorded    │
-│    via haversineKm() │                       │  • elapsed = now - start  │
-│  • Detects signal    │                       │  • Doze-proof accuracy    │
-│    loss / recovery   │                       │  • Computes time fare     │
-│  • Builds in-memory  │                       │  • notifyListeners()      │
-│    SignalLossLog[]   │                       └──────────┬─────────────────┘
-│  • notifyListeners() │                                  │
-└──────────┬───────────┘                                  │
-           │                                              │
-           ▼                                              ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                         UI LAYER (Widgets)                        │
-│  Consumer<DistanceProvider>  ·  Consumer<TimerProvider>           │
-│  ─────────────────────────────────────────────────────────────── │
-│  • Reads totalKm, fare, signalStatus, elapsed from providers     │
-│  • Renders map (flutter_map + MBTiles), fare display, alerts     │
-│  • NEVER computes—only reads & displays                          │
-└──────────────────────────┬───────────────────────────────────────┘
-                           │ User taps "End Trip"
-                           ▼
-┌──────────────────────────────────────────────────────────────────┐
-│                      DatabaseService (async)                      │
-│  ──────────────────────────────────────────────────────────────── │
-│  1. insertTrip(TripRecord) → gets trip.id                        │
-│  2. For each SignalLossLog in DistanceProvider.logs:              │
-│       insertSignalLossLog(log..tripId = trip.id)                 │
-│  3. HistoryProvider.refresh() → notifyListeners()                │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-### Flow Summary
-
-1. **GPS → Provider:** `Geolocator` emits `Position` events. `DistanceProvider` consumes the stream, calculates delta-km with Haversine, accumulates total, and detects signal loss windows.
-2. **Clock → Provider:** `TimerProvider` records `_startTime = DateTime.now()` on trip start. A `Timer.periodic(1s)` triggers `notifyListeners()` for UI refresh, but the elapsed duration is always `DateTime.now().difference(_startTime)`—immune to Doze-mode tick skips.
-3. **Provider → UI:** Widgets use `Consumer<T>` / `context.watch<T>()` to reactively rebuild only the relevant subtree when `notifyListeners()` fires. No computation in build methods.
-4. **UI → DB:** On trip end, the UI calls a method on the provider which delegates to `DatabaseService` (all `async`). The `TripRecord` and any `SignalLossLog` entries are persisted. `HistoryProvider` then refreshes its in-memory list.
-5. **DB → UI (History):** `HistoryProvider.getTrips()` loads from SQLite. The history screen consumes this provider to display past trips with transparency logs.
-
----
-
-## 6. Offline Guarantee Checklist
-
-| Concern | Solution |
-|---|---|
-| Map tiles | Pre-downloaded `.mbtiles` served locally via `flutter_map_mbtiles` |
-| GPS | Device-native sensor, no network-assisted location needed |
-| Distance math | Pure Dart (`latlong2`), zero network calls |
-| Trip storage | Local SQLite via `sqflite` |
-| Settings | SQLite `settings` table, no cloud sync |
-| Internet permission | Used **only** during onboarding map download; all tracking features work airplane-mode |
+The 1-second `Timer.periodic` continues ticking during pause but skips `notifyListeners()` and notification updates.

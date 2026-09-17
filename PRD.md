@@ -1,40 +1,85 @@
-# Product Requirements Document (PRD)
-**Project Name:** Custom Offline Taximeter App (Argo App)
-**Target Platform:** Android (Mobile)
-**Target Audience:** Rideshare / Online Taxi Driver (Personal Use)
+# Pagroo — Product Requirements Document (PRD)
 
-## 1. Product Overview
-The objective is to build a mobile application that functions as a customizable taximeter. The app is specifically designed for a rideshare driver to independently track trip fares based on either distance (kilometers) or time. The application must operate 100% offline without requiring cellular data during the trip, utilizing the device's native GPS and offline map data targeting the East Java region (specifically covering Surabaya and Sidoarjo).
+## 1. Overview
 
-## 2. Tech Stack Recommendations
-*   **Framework:** Flutter (Dart) - Chosen for beginner friendliness and excellent offline package support.
-*   **Local Database:** SQLite (via `sqflite` package) - For robust, 100% offline history storage.
-*   **Map Engine:** `flutter_map` using OpenStreetMap (OSM) tile data in `.mbtiles` format.
-*   **Location Services:** `geolocator` package for background GPS tracking.
+**Pagroo** is an Android fare-tracking app for Indonesian ride-hailing drivers ("ojol").  
+It calculates and displays real-time fare earnings based on either **GPS distance** or **elapsed time**, using configurable per-km and per-minute rates set by the driver.
 
-## 3. Core Features & Requirements
+The app runs fully offline with locally-stored vector maps (MBTiles) and persists all trip history in a local SQLite database.
 
-### 3.1. Mandatory Offline Map Onboarding
-*   **Concept:** The application cannot be used until the base map data is downloaded.
-*   **Scope:** Download a pre-packaged map of the East Java region (ensuring comprehensive coverage of Surabaya and Sidoarjo without false-positive clipping errors). The file size must be kept well under 1 GB (target: 200MB - 400MB).
-*   **Flow:** On initial launch, prompt the user to download the map package via Wi-Fi. Lock the main tracking features until the download is 100% complete.
+## 2. Target User
 
-### 3.2. Distance Tracking (Kilometer-Based Meter)
-*   **Concept:** Tracks distance using native device GPS coordinates independently from the time tracker.
-*   **Custom Pricing:** The user must be able to set a custom price per kilometer.
-*   **Signal Loss Handling & Recovery:** 
-    *   Implement "Straight-Line Recovery" (Haversine formula) to calculate the distance between the last known coordinate and the reconnected coordinate.
-    *   Provide visual/audio alerts if the GPS accuracy drops significantly or signal is lost for more than 5 seconds.
+Indonesian motorcycle taxi (ojek online) drivers who need a transparent, independent fare meter separate from their platform's app.
 
-### 3.3. Time Tracking (Time-Based Meter)
-*   **Concept:** A background timer that tracks trip duration independently from distance.
-*   **Custom Pricing:** The user must be able to set a custom price per minute/hour.
+## 3. Core Features
 
-### 3.4. Advanced Trip History & Transparency
-*   **Concept:** A local logging system to store past trips using SQLite.
-*   **Base Data Stored:** Date, type of tracking (Distance or Time), total metric (KM or Minutes), and total earnings.
-*   **GPS Transparency Log:** If the signal is lost during a distance-tracked trip, the history log must specifically record this incident. It must display how much distance was calculated using the "Straight-Line" fallback method during the blackout, providing full transparency on the fare calculation.
+### 3.1 Dual Tracking Modes
 
-## 4. Out of Scope (For Now)
-*   Cloud database synchronization (Firebase, AWS, etc.).
-*   Live traffic updates (requires internet).
+| Mode | Metric | Rate Unit | GPS Required |
+|---|---|---|---|
+| **Distance Meter** | Cumulative km (Haversine) | Rp/km | Yes |
+| **Time Meter** | Elapsed minutes | Rp/min | No |
+
+- Only one mode can be active at a time. The inactive mode card is visually disabled.
+- An **Active Trip Banner** at the bottom of the home screen lets the driver return to an in-progress trip.
+
+### 3.2 Distance Meter
+
+- Real-time GPS tracking via `Geolocator` high-accuracy stream (`distanceFilter: 5m`).
+- Blue polyline route drawn on an offline vector map (`flutter_map` + MBTiles).
+- Blue dot marker follows the driver's current position.
+- Bottom HUD panel: live fare (Rp) and distance (km).
+- Signal Loss Handling: 5-second watchdog detects GPS drops; upon recovery, straight-line (Haversine) distance is added and a `SignalLossLog` is recorded.
+- "My Location" FAB re-centers the map on the current GPS fix.
+
+### 3.3 Time Meter
+
+- 1-second `Timer.periodic` drives the clock and fare display.
+- **Pause/Resume**: While a trip is active, the driver can pause the timer (stops fare accumulation) and resume it. The UI shows a split button row — End Trip (flex: 3) + Pause/Resume icon (flex: 1).
+- Accumulated duration is precisely tracked across pause/resume cycles using `_accumulatedDuration` and `_resumeTime`.
+
+### 3.4 Trip History
+
+- All completed trips (distance and time) are saved to local SQLite.
+- **History List**: Shows total trips, total earnings, per-trip cards with date/metric/earnings.
+- **Trip Detail**: Summary stats, static route map replay (distance trips), and collapsible Signal Loss Transparency Logs (`ExpansionTile`).
+- Trips can be individually deleted with confirmation.
+
+### 3.5 Offline Vector Maps
+
+- **Supported Regions**: Jakarta, Surabaya & Sidoarjo.
+- MBTiles files hosted on Internet Archive, downloaded via HTTP with progress tracking.
+- SQLite magic-byte validation ensures file integrity post-download.
+- **Active Map Selection**: The driver explicitly sets which downloaded map to use via `SettingsProvider.setActiveMap()`. The active map is persisted across app restarts.
+- Map is optional — the Distance Meter works on a blank canvas if no map is downloaded.
+
+### 3.6 Settings
+
+- **Distance Rate** (Rp/km): Configurable with quick-set chips (3000–7500).
+- **Time Rate** (Rp/min): Configurable with quick-set chips (300–1000).
+- **Dark/Light Theme Toggle**.
+- **Map Management**: Download, Set Active, Delete per city. Shows file size and download progress.
+
+### 3.7 Foreground Service
+
+- Android Foreground Service (`flutter_foreground_task`) keeps the app alive during trips.
+- Persistent notification displays live fare in the notification shade.
+- Wakelock prevents the screen from sleeping during active tracking.
+
+### 3.8 Localization & Formatting
+
+- All currency displayed in Indonesian Rupiah with dot thousand separators: `Rp 4.000` (via `intl` package, `id_ID` locale).
+
+## 4. Non-Functional Requirements
+
+- **Offline-First**: Zero network dependency during tracking. Internet only needed for map downloads.
+- **Portrait Lock**: Orientation locked to prevent accidental rotations mid-trip.
+- **State Reset**: Trip data (polyline, distance, fare) is fully cleared after each trip ends and before a new trip starts.
+- **Graceful Degradation**: Missing map files result in a blank canvas, not a crash.
+
+## 5. Out of Scope (v1)
+
+- Multi-language support (Indonesian UI strings).
+- Cloud sync / backup.
+- Earnings analytics and charts.
+- iOS build.

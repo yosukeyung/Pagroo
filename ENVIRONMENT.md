@@ -1,87 +1,133 @@
-# Environment Setup Guide
-**Project Name:** Custom Offline Taximeter App (Argo App)
-**Framework:** Flutter
-**Target Platform:** Android
-
-This document outlines the required development environment, dependencies, and configurations needed to build and run the Custom Offline Taximeter application. This guide is specifically optimized for an AI agent or a beginner developer.
+# Pagroo — Environment Setup
 
 ## 1. Prerequisites
 
-Before setting up the project, ensure the following software is installed on the host machine:
-*   **Operating System:** Windows, macOS, or Linux.
-*   **Git:** Version control system.
-*   **IDE (Integrated Development Environment):** 
-    *   **Visual Studio Code (VS Code)** is highly recommended for beginners and AI pair programming.
-    *   **Android Studio** is mandatory for the Android toolchain, SDKs, and emulator setup.
+| Tool | Version | Notes |
+|---|---|---|
+| Flutter SDK | ≥ 3.13.2 | Dart SDK ^3.13.2 (from `pubspec.yaml`) |
+| Android Studio | Latest | For emulator + SDK management |
+| Android SDK | API 21+ | `minSdk = flutter.minSdkVersion` |
+| Java / JDK | 17 | Required by Gradle (`JavaVersion.VERSION_17`) |
+| Git | Any | Version control |
 
-## 2. Flutter & Android Setup
+## 2. Clone & Install
 
-1.  **Flutter SDK:**
-    *   Download and install the latest stable Flutter SDK from the [official Flutter website](https://docs.flutter.dev/get-started/install).
-    *   Add the `flutter/bin` directory to the system's PATH variable.
-2.  **Android Toolchain:**
-    *   Install **Android Studio**.
-    *   Open Android Studio and navigate to `SDK Manager` -> `SDK Tools`.
-    *   Ensure the following are installed: **Android SDK Build-Tools**, **Android Emulator**, and **Android SDK Platform-Tools**.
-    *   Set up an Android Virtual Device (AVD) to test the app (or prepare to connect a physical Android device via USB debugging).
-3.  **Verification:**
-    *   Run `flutter doctor` in the terminal to verify that all necessary components are installed correctly. Resolve any issues marked with an `X`.
+```bash
+git clone <repo-url> papi
+cd papi
+flutter pub get
+```
 
-## 3. Project Dependencies (`pubspec.yaml`)
+## 3. Dependencies
 
-To implement the offline features specified in the PRD, add the following packages to your `pubspec.yaml` file:
+### Runtime Dependencies
+
+| Package | Version | Purpose |
+|---|---|---|
+| `flutter_map` | ^7.0.2 | Map widget (OpenStreetMap-compatible tile renderer) |
+| `mbtiles` | ^0.4.0 | Read MBTiles SQLite databases |
+| `vector_map_tiles` | ^8.0.0 | Vector tile layer for flutter_map |
+| `vector_map_tiles_mbtiles` | ^1.2.0 | MBTiles provider for vector_map_tiles |
+| `vector_tile_renderer` | ^5.2.1 | Theme reader for vector tile styles |
+| `latlong2` | ^0.9.1 | LatLng model + Haversine distance |
+| `geolocator` | ^14.0.3 | GPS location stream + permissions |
+| `sqflite` | ^2.4.3 | SQLite database (trips, settings) |
+| `sqlite3_flutter_libs` | ^0.5.24 | Bundles native `libsqlite3.so` for Android |
+| `path_provider` | ^2.1.6 | App documents directory path |
+| `path` | ^1.9.1 | File path manipulation |
+| `provider` | ^6.1.5+1 | State management (ChangeNotifier) |
+| `wakelock_plus` | ^1.8.0 | Prevents screen sleep during tracking |
+| `flutter_foreground_task` | ^11.0.3 | Android Foreground Service + notification |
+| `http` | ^1.6.0 | HTTP client for map downloads |
+| `intl` | ^0.19.0 | Indonesian locale number/currency formatting |
+
+### Dev Dependencies
+
+| Package | Version | Purpose |
+|---|---|---|
+| `flutter_test` | SDK | Widget & unit testing |
+| `flutter_lints` | ^6.0.0 | Static analysis lint rules |
+
+## 4. Android Configuration
+
+### AndroidManifest.xml Permissions
+
+```xml
+<uses-permission android:name="android.permission.INTERNET"/>
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+```
+
+### Foreground Service Declaration
+
+```xml
+<service
+    android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+    android:foregroundServiceType="location|specialUse"
+    android:exported="false" />
+```
+
+### Build Configuration
+
+- **Namespace**: `com.example.argo_app`
+- **Compile SDK**: `flutter.compileSdkVersion`
+- **Min SDK**: `flutter.minSdkVersion`
+- **Java Compatibility**: 17
+- **Kotlin JVM Target**: 17
+
+## 5. Assets
 
 ```yaml
-dependencies:
-  flutter:
-    sdk: flutter
-  
-  # Map & Offline Tiles (Semi-Offline Implementation)
-  flutter_map: ^6.1.0 # For rendering the map view
-  flutter_map_mbtiles: ^1.0.0 # For loading .mbtiles local map data
-  latlong2: ^0.9.0 # For coordinate math (Haversine calculations)
-
-  # Geolocation & GPS
-  geolocator: ^11.0.0 # For background and foreground location tracking
-
-  # Local Database (Trip History)
-  sqflite: ^2.3.0 # SQLite database manager
-  path_provider: ^2.1.2 # To locate correct local paths for DB and Maps
-  path: ^1.8.3 # Path manipulation
-
-  # UI & State Management 
-  provider: ^6.1.1 # Simple state management for handling timer and distance logic
-```
-(Note: Instruct the AI agent to verify pub.dev for the latest compatible package versions).
-
-## 4. Android Configuration (AndroidManifest.xml)
-Since the app requires background GPS tracking and initial internet access to download the map map data for East Java, configure the following permissions in android/app/src/main/AndroidManifest.xml:
-```xml
-<manifest xmlns:android="[http://schemas.android.com/apk/res/android](http://schemas.android.com/apk/res/android)">
-    <!-- Internet permission for the mandatory initial map download -->
-    <uses-permission android:name="android.permission.INTERNET"/>
-    
-    <!-- Location permissions for offline GPS tracking -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    
-    <!-- Required for background location tracking while screen is off (Android 10+) -->
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    
-    <!-- Permission to write/read the downloaded map data to storage -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    
-    <!-- Wake lock to keep the timer/GPS running while screen is off -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-
-    <application ...>
-        ...
-    </application>
-</manifest>
+flutter:
+  assets:
+    - assets/style.json    # OpenMapTiles vector tile theme
 ```
 
-## 5. Development & Testing Workflow Recommendations
-- Testing GPS on Emulator: You can simulate GPS movement (driving a route) using the extended controls (... menu) in the Android Studio Emulator by loading a GPX or KML route file. This is crucial for testing the offline distance calculation and "Straight-Line Recovery" without actually driving.
+The `style.json` file defines the visual styling for the offline vector maps (road colors, labels, land/water fill).
 
-- State Separation: Keep the UI code entirely separated from the timer and distance calculation logic using Provider to ensure the app doesn't freeze when calculating GPS coordinates.
+## 6. Running the App
+
+### Debug (Emulator or Physical Device)
+
+```bash
+flutter run
+```
+
+### Release APK
+
+```bash
+flutter build apk --release
+```
+
+### Run Tests
+
+```bash
+flutter test
+```
+
+## 7. Map Files
+
+MBTiles files are downloaded at runtime to `{appDocDir}/maps/`:
+
+| City | File | Source URL |
+|---|---|---|
+| Jakarta | `jakarta.mbtiles` | `https://archive.org/download/jakarta_202609/...` |
+| Surabaya & Sidoarjo | `surabaya_sidoarjo.mbtiles` | `https://archive.org/download/sda-and-sby/...` |
+
+Files are validated post-download by checking the first 6 bytes for the SQLite magic header (`53 51 4C 69 74 65`).
+
+## 8. Local Database
+
+- **File**: `{appDocDir}/argo_app_v2.db`
+- **Engine**: SQLite via `sqflite` + `sqlite3_flutter_libs`
+- **Tables**: `trips`, `signal_loss_logs`, `settings`
+- **Version**: 1 (no migrations)
