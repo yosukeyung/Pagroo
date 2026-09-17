@@ -49,5 +49,5 @@ app.*.map.json
 # Widget Preview related
 .widget_preview/
 
-TASK.md
+
 implementation_plan.md
