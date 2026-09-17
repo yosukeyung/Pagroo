@@ -11,15 +11,21 @@ class TimerProvider extends ChangeNotifier {
   
   Timer? _timer;
   DateTime? _startTime;
+  DateTime? _resumeTime;
+  Duration _accumulatedDuration = Duration.zero;
   bool _isTracking = false;
+  bool _isPaused = false;
   double _pricePerMinute = 0.0;
 
   bool get isTracking => _isTracking;
+  bool get isPaused => _isPaused;
   DateTime? get startTime => _startTime;
   
   Duration get elapsed {
-    if (_startTime == null) return Duration.zero;
-    return DateTime.now().difference(_startTime!);
+    if (!_isTracking) return Duration.zero;
+    if (_isPaused) return _accumulatedDuration;
+    if (_resumeTime == null) return Duration.zero;
+    return _accumulatedDuration + DateTime.now().difference(_resumeTime!);
   }
 
   double get totalMinutes => elapsed.inSeconds / 60.0;
@@ -31,16 +37,35 @@ class TimerProvider extends ChangeNotifier {
 
   void startTracking() {
     _startTime = DateTime.now();
+    _resumeTime = DateTime.now();
+    _accumulatedDuration = Duration.zero;
     _isTracking = true;
+    _isPaused = false;
     notifyListeners();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      notifyListeners();
-      ForegroundServiceManager.updateNotification(
-        'Pagroo',
-        'Time Meter: ${formatCurrency(totalFare)}',
-      );
+      if (!_isPaused) {
+        notifyListeners();
+        ForegroundServiceManager.updateNotification(
+          'Pagroo',
+          'Time Meter: ${formatCurrency(totalFare)}',
+        );
+      }
     });
+  }
+
+  void pauseTracking() {
+    if (!_isTracking || _isPaused) return;
+    _isPaused = true;
+    _accumulatedDuration += DateTime.now().difference(_resumeTime!);
+    notifyListeners();
+  }
+
+  void resumeTracking() {
+    if (!_isTracking || !_isPaused) return;
+    _isPaused = false;
+    _resumeTime = DateTime.now();
+    notifyListeners();
   }
 
   Future<void> endTrip() async {
@@ -64,7 +89,10 @@ class TimerProvider extends ChangeNotifier {
   /// Resets timer state and earnings to zero.
   void resetTripState() {
     _startTime = null;
+    _resumeTime = null;
+    _accumulatedDuration = Duration.zero;
     _isTracking = false;
+    _isPaused = false;
     notifyListeners();
   }
 

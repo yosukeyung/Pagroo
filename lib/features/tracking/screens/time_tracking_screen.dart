@@ -154,15 +154,47 @@ class _TimeTrackingScreenState extends State<TimeTrackingScreen> {
                       ? SizedBox(
                           width: double.infinity,
                           height: 56,
-                          child: ElevatedButton.icon(
-                            onPressed: () => _endTrip(context),
-                            icon: const Icon(Icons.stop_rounded),
-                            label: const Text('END TRIP', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: theme.colorScheme.error,
-                              foregroundColor: theme.colorScheme.onError,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: ElevatedButton.icon(
+                                  onPressed: () => _endTrip(context),
+                                  icon: const Icon(Icons.stop_rounded),
+                                  label: const Text('END TRIP', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.colorScheme.error,
+                                    foregroundColor: theme.colorScheme.onError,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    minimumSize: const Size.fromHeight(56),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                flex: 1,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    if (timerProv.isPaused) {
+                                      timerProv.resumeTracking();
+                                    } else {
+                                      timerProv.pauseTracking();
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: timerProv.isPaused ? Colors.orange : theme.colorScheme.secondary,
+                                    foregroundColor: timerProv.isPaused ? Colors.white : theme.colorScheme.onSecondary,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    minimumSize: const Size.fromHeight(56),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  child: Icon(
+                                    timerProv.isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                                    size: 28,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         )
                       : SizedBox(
